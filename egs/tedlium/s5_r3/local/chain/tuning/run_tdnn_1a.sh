@@ -1,41 +1,57 @@
 #!/bin/bash
 
+# Results
 
-# by default, with cleanup
-# this is basically the same as the run_tdnn_lstm_bab7.sh
-# with dropout and backstitch (+more iterations as the convergence with dropout and backstitch is slower)
-# please note that the language(s) was not selected for any particular reason (other to represent the various sizes of babel datasets)
-# 304-lithuanian   | %WER 38.1 | 20041 61492 | 64.7 25.8 9.5 2.7 38.1 28.0 | -0.290 | exp/chain_cleaned/tdnn_lstm_bab7_bs_batchnorm_sp/decode_dev10h.pem/score_9/dev10h.pem.ctm.sys
-#                  num-iters=120 nj=2..12 num-params=36.7M dim=43+100->3273 combine=-0.152->-0.140
-#                  xent:train/valid[79,119,final]=(-2.33,-1.63,-1.62/-2.51,-2.01,-2.01)
-#                  logprob:train/valid[79,119,final]=(-0.184,-0.126,-0.125/-0.221,-0.201,-0.202)
-# 206-zulu         | %WER 50.6 | 22805 52162 | 53.5 37.4 9.1 4.1 50.6 30.4 | -0.635 | exp/chain_cleaned/tdnn_lstm_bab7_bs_batchnorm_sp/decode_dev10h.pem/score_10/dev10h.pem.ctm.sys
-#                  num-iters=167 nj=2..12 num-params=36.7M dim=43+100->3274 combine=-0.191->-0.182
-#                  xent:train/valid[110,166,final]=(-2.46,-1.82,-1.74/-2.58,-2.13,-2.10)
-#                  logprob:train/valid[110,166,final]=(-0.231,-0.170,-0.160/-0.269,-0.244,-0.244)
-# 104-pashto       | %WER 38.6 | 21825 101803 | 65.4 25.1 9.4 4.0 38.6 29.6 | -0.473 | exp/chain_cleaned/tdnn_lstm_bab7_bs_batchnorm_sp/decode_dev10h.pem/score_9/dev10h.pem.ctm.sys
-#                  num-iters=214 nj=2..12 num-params=36.8M dim=43+100->3328 combine=-0.169->-0.164
-#                  xent:train/valid[141,213,final]=(-2.39,-1.69,-1.63/-2.57,-2.05,-2.03)
-#                  logprob:train/valid[141,213,final]=(-0.210,-0.151,-0.144/-0.259,-0.228,-0.227)
+# System                      tdnn_1a
+# Scoring script              sclite
+# WER on dev(orig)              8.2
+# WER on dev(rescored ngram)    7.6
+# WER on dev(rescored rnnlm)    6.3
+# WER on test(orig)             8.1
+# WER on test(rescored ngram)   7.7
+# WER on test(rescored rnnlm)   6.7
+# Final train prob            -0.0802
+# Final valid prob            -0.0980
+# Final train prob (xent)     -1.1450
+# Final valid prob (xent)     -1.2498
+# Num-params                  26651840
+
+
+
+## how you run this (note: this assumes that the run_tdnn.sh soft link points here;
+## otherwise call it directly in its location).
+# by default, with cleanup:
+# local/chain/run_tdnn.sh
+
+# without cleanup:
+# local/chain/run_tdnn.sh  --train-set train --gmm tri3 --nnet3-affix "" &
+
+# note, if you have already run the corresponding non-chain nnet3 system
+# (local/nnet3/run_tdnn.sh), you may want to run with --stage 14.
+
+# This script is like run_tdnn_1a.sh except it uses an xconfig-based mechanism
+# to get the configuration.
+
 set -e -o pipefail
 
 # First the options that are passed through to run_ivector_common.sh
 # (some of which are also used in this script directly).
-stage=17
+stage=0
 nj=30
-dropout_schedule='0,0@0.20,0.3@0.50,0'
+decode_nj=30
+min_seg_len=1.55
+xent_regularize=0.1
 train_set=train_cleaned
-gmm=tri5_cleaned  # the gmm for the target data
-langdir=data/langp/tri5_ali
-num_threads_ubm=12
+gmm=tri3_cleaned  # the gmm for the target data
+num_threads_ubm=32
 nnet3_affix=_cleaned  # cleanup affix for nnet3 and chain dirs, e.g. _cleaned
 
 # The rest are configs specific to this script.  Most of the parameters
 # are just hardcoded at this level, in the commands below.
 train_stage=-10
 tree_affix=  # affix for tree directory, e.g. "a" or "b", in case we change the configuration.
-tdnn_affix="_bab7_bs_batchnorm"  #affix for TDNN directory, e.g. "a" or "b", in case we change the configuration.
-common_egs_dir=exp/chain_cleaned/tdnn_lstm_sp/egs  # you can set this to use previously dumped egs.
+tdnn_affix=_1a  #affix for TDNN directory, e.g. "a" or "b", in case we change the configuration.
+common_egs_dir= # you can set this to use previously dumped egs.
 
 # End configuration section.
 echo "$0 $@"  # Print the command line for logging
@@ -53,8 +69,9 @@ where "nvcc" is installed.
 EOF
 fi
 
-local/chain/run_ivector_common.sh --stage $stage \
+local/nnet3/run_ivector_common.sh --stage $stage \
                                   --nj $nj \
+                                  --min-seg-len $min_seg_len \
                                   --train-set $train_set \
                                   --gmm $gmm \
                                   --num-threads-ubm $num_threads_ubm \
@@ -65,7 +82,7 @@ gmm_dir=exp/$gmm
 ali_dir=exp/${gmm}_ali_${train_set}_sp
 tree_dir=exp/chain${nnet3_affix}/tree${tree_affix}
 lat_dir=exp/chain${nnet3_affix}/${gmm}_${train_set}_sp_lats
-dir=exp/chain${nnet3_affix}/tdnn_lstm${tdnn_affix}_sp
+dir=exp/chain${nnet3_affix}/tdnn${tdnn_affix}_sp
 train_data_dir=data/${train_set}_sp_hires
 lores_train_data_dir=data/${train_set}_sp
 train_ivector_dir=exp/nnet3${nnet3_affix}/ivectors_${train_set}_sp_hires
@@ -90,7 +107,7 @@ if [ $stage -le 14 ]; then
       exit 1;
     fi
   else
-    cp -r $langdir data/lang_chain
+    cp -r data/lang data/lang_chain
     silphonelist=$(cat data/lang_chain/phones/silence.csl) || exit 1;
     nonsilphonelist=$(cat data/lang_chain/phones/nonsilence.csl) || exit 1;
     # Use our special topology... note that later on may have to tune this
@@ -103,7 +120,7 @@ if [ $stage -le 15 ]; then
   # Get the alignments as lattices (gives the chain training more freedom).
   # use the same num-jobs as the alignments
   steps/align_fmllr_lats.sh --nj 100 --cmd "$train_cmd" ${lores_train_data_dir} \
-    $langdir $gmm_dir $lat_dir
+    data/lang $gmm_dir $lat_dir
   rm $lat_dir/fsts.*.gz # save space
 fi
 
@@ -117,48 +134,38 @@ if [ $stage -le 16 ]; then
   fi
   steps/nnet3/chain/build_tree.sh --frame-subsampling-factor 3 \
       --context-opts "--context-width=2 --central-position=1" \
-      --leftmost-questions-truncate -1 \
       --cmd "$train_cmd" 4000 ${lores_train_data_dir} data/lang_chain $ali_dir $tree_dir
 fi
 
-xent_regularize=0.1
 if [ $stage -le 17 ]; then
   mkdir -p $dir
 
   echo "$0: creating neural net configs using the xconfig parser";
 
   num_targets=$(tree-info $tree_dir/tree |grep num-pdfs|awk '{print $2}')
-  [ -z $num_targets ] && { echo "$0: error getting num-targets"; exit 1; }
   learning_rate_factor=$(echo "print 0.5/$xent_regularize" | python)
-  lstm_opts="decay-time=20 dropout-proportion=0.0"
-  label_delay=5
 
   mkdir -p $dir/configs
   cat <<EOF > $dir/configs/network.xconfig
   input dim=100 name=ivector
-  input dim=43 name=input
+  input dim=40 name=input
 
   # please note that it is important to have input layer with the name=input
   # as the layer immediately preceding the fixed-affine-layer to enable
   # the use of short notation for the descriptor
-  fixed-affine-layer name=lda input=Append(-2,-1,0,1,2,ReplaceIndex(ivector, t, 0)) affine-transform-file=$dir/configs/lda.mat
+  fixed-affine-layer name=lda input=Append(-1,0,1,ReplaceIndex(ivector, t, 0)) affine-transform-file=$dir/configs/lda.mat
 
   # the first splicing is moved before the lda layer, so no splicing here
-  relu-batchnorm-layer name=tdnn1 dim=1024
+  relu-batchnorm-layer name=tdnn1 dim=1024 self-repair-scale=1.0e-04
   relu-batchnorm-layer name=tdnn2 input=Append(-1,0,1) dim=1024
-  relu-batchnorm-layer name=tdnn3 input=Append(-1,0,1) dim=1024
-
-  # check steps/libs/nnet3/xconfig/lstm.py for the other options and defaults
-  fast-lstmp-layer name=fastlstm1 cell-dim=1024 recurrent-projection-dim=256 non-recurrent-projection-dim=256 delay=-3 $lstm_opts
+  relu-batchnorm-layer name=tdnn3 input=Append(-1,0,1,2) dim=1024
   relu-batchnorm-layer name=tdnn4 input=Append(-3,0,3) dim=1024
   relu-batchnorm-layer name=tdnn5 input=Append(-3,0,3) dim=1024
-  fast-lstmp-layer name=fastlstm2 cell-dim=1024 recurrent-projection-dim=256 non-recurrent-projection-dim=256 delay=-3 $lstm_opts
-  relu-batchnorm-layer name=tdnn6 input=Append(-3,0,3) dim=1024
-  relu-batchnorm-layer name=tdnn7 input=Append(-3,0,3) dim=1024
-  fast-lstmp-layer name=fastlstm3 cell-dim=1024 recurrent-projection-dim=256 non-recurrent-projection-dim=256 delay=-3 $lstm_opts
+  relu-batchnorm-layer name=tdnn6 input=Append(-6,-3,0) dim=1024
 
   ## adding the layers for chain branch
-  output-layer name=output input=fastlstm3 output-delay=$label_delay include-log-softmax=false dim=$num_targets max-change=1.5
+  relu-batchnorm-layer name=prefinal-chain input=tdnn6 dim=1024 target-rms=0.5
+  output-layer name=output include-log-softmax=false dim=$num_targets max-change=1.5
 
   # adding the layers for xent branch
   # This block prints the configs for a separate output that will be
@@ -169,7 +176,8 @@ if [ $stage -le 17 ]; then
   # final-layer learns at a rate independent of the regularization
   # constant; and the 0.5 was tuned so as to make the relative progress
   # similar in the xent and regular final layers.
-  output-layer name=output-xent input=fastlstm3 output-delay=$label_delay dim=$num_targets learning-rate-factor=$learning_rate_factor max-change=1.5
+  relu-batchnorm-layer name=prefinal-xent input=tdnn6 dim=1024 target-rms=0.5
+  output-layer name=output-xent dim=$num_targets learning-rate-factor=$learning_rate_factor max-change=1.5
 
 EOF
   steps/nnet3/xconfig_to_configs.py --xconfig-file $dir/configs/network.xconfig --config-dir $dir/configs/
@@ -179,35 +187,31 @@ fi
 if [ $stage -le 18 ]; then
   if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d $dir/egs/storage ]; then
     utils/create_split_dir.pl \
-     /export/b0{5,6,7,8}/$USER/kaldi-data/egs/babel-$(date +'%m_%d_%H_%M')/s5d/$RANDOM/$dir/egs/storage $dir/egs/storage
+     /export/b0{5,6,7,8}/$USER/kaldi-data/egs/ami-$(date +'%m_%d_%H_%M')/s5/$dir/egs/storage $dir/egs/storage
   fi
-  [ ! -d $dir/egs ] && mkdir -p $dir/egs/
-  touch $dir/egs/.nodelete # keep egs around when that run dies.
 
  steps/nnet3/chain/train.py --stage $train_stage \
     --cmd "$decode_cmd" \
     --feat.online-ivector-dir $train_ivector_dir \
     --feat.cmvn-opts "--norm-means=false --norm-vars=false" \
-    --chain.xent-regularize $xent_regularize \
+    --chain.xent-regularize 0.1 \
     --chain.leaky-hmm-coefficient 0.1 \
     --chain.l2-regularize 0.00005 \
     --chain.apply-deriv-weights false \
     --chain.lm-opts="--num-extra-lm-states=2000" \
     --egs.dir "$common_egs_dir" \
     --egs.opts "--frames-overlap-per-eg 0" \
-    --egs.chunk-width 150 \
+    --egs.chunk-width 150,110,100 \
     --trainer.num-chunk-per-minibatch 128 \
     --trainer.frames-per-iter 1500000 \
-    --trainer.num-epochs 10 \
+    --trainer.num-epochs 4 \
+    --trainer.optimization.proportional-shrink 10 \
     --trainer.optimization.num-jobs-initial 2 \
-    --trainer.optimization.num-jobs-final 12 \
-    --trainer.dropout-schedule $dropout_schedule \
-    --trainer.optimization.backstitch-training-scale 1 \
-    --trainer.optimization.backstitch-training-interval 4 \
+    --trainer.optimization.num-jobs-final 6 \
     --trainer.optimization.initial-effective-lrate 0.001 \
     --trainer.optimization.final-effective-lrate 0.0001 \
     --trainer.max-param-change 2.0 \
-    --cleanup.remove-egs true \
+    --cleanup.remove-egs false \
     --feat-dir $train_data_dir \
     --tree-dir $tree_dir \
     --lat-dir $lat_dir \
@@ -220,7 +224,26 @@ if [ $stage -le 19 ]; then
   # Note: it might appear that this data/lang_chain directory is mismatched, and it is as
   # far as the 'topo' is concerned, but this script doesn't read the 'topo' from
   # the lang directory.
-  utils/mkgraph.sh --self-loop-scale 1.0 data/langp_test $dir $dir/graph
+  utils/mkgraph.sh --self-loop-scale 1.0 data/lang $dir $dir/graph
 fi
 
+if [ $stage -le 20 ]; then
+  rm $dir/.error 2>/dev/null || true
+  for dset in dev test; do
+      (
+      steps/nnet3/decode.sh --num-threads 4 --nj $decode_nj --cmd "$decode_cmd" \
+          --acwt 1.0 --post-decode-acwt 10.0 \
+          --online-ivector-dir exp/nnet3${nnet3_affix}/ivectors_${dset}_hires \
+          --scoring-opts "--min-lmwt 5 " \
+         $dir/graph data/${dset}_hires $dir/decode_${dset} || exit 1;
+      steps/lmrescore_const_arpa.sh --cmd "$decode_cmd" data/lang data/lang_rescore \
+        data/${dset}_hires ${dir}/decode_${dset} ${dir}/decode_${dset}_rescore || exit 1
+    ) || touch $dir/.error &
+  done
+  wait
+  if [ -f $dir/.error ]; then
+    echo "$0: something went wrong in decoding"
+    exit 1
+  fi
+fi
 exit 0
